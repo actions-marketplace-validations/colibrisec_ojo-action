@@ -79,6 +79,30 @@ check "post_pr_comment has both gh api calls" "2" "$comment_calls"
 literal_calls=$(grep -c -- '-f body=@"\$full"' scan.sh || true)
 check "no -f (raw-field) call left -- @file only expands under -F" "0" "$literal_calls"
 
+# --- post_pr_comment: update an existing comment via issues/comments/{id}, create otherwise ---
+gh_calls="$tmp/gh_calls"
+gh() {
+  echo "$*" >> "$gh_calls"
+  case "$*" in
+    "api repos/o/r/issues/7/comments --paginate"*) echo "${EXISTING_COMMENT:-}" ;;
+  esac
+}
+echo '{"pull_request":{"number":7}}' > "$tmp/event.json"
+echo body > "$tmp/body.md"
+export GITHUB_EVENT_NAME=pull_request GITHUB_EVENT_PATH="$tmp/event.json" GITHUB_REPOSITORY=o/r MARKER=m
+
+: > "$gh_calls"
+EXISTING_COMMENT=123 post_pr_comment "$tmp/body.md"
+contains "existing comment is updated through the issue-comment endpoint" "api -X PATCH repos/o/r/issues/comments/123 " "$(cat "$gh_calls")"
+
+: > "$gh_calls"
+EXISTING_COMMENT= post_pr_comment "$tmp/body.md"
+contains "no existing comment: a new one is created on the PR" "api repos/o/r/issues/7/comments -F body=@" "$(cat "$gh_calls")"
+case "$(cat "$gh_calls")" in
+  *PATCH*) echo "FAIL: no existing comment: must not PATCH" >&2; fail=1 ;;
+esac
+unset -f gh
+
 # create_issues_from's tsv extraction must line up with its own `read` order
 line=$(jq -r '.findings[]? | .Package as $p | .Vulns[]? | [.ID, $p.Name, $p.Version, .FixedVersion, .Severity, .Summary, .URL] | @tsv' "$tmp/small.json")
 IFS=$'\t' read -r id pkg version fixed severity summary url <<< "$line"

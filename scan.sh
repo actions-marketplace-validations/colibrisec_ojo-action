@@ -152,7 +152,7 @@ post_pr_comment() {
   # -F (not -f): only --field reads an "@file" value from disk. --raw-field
   # would send the literal string "@$full" as the comment body.
   if [ -n "$existing" ] && [ "$existing" != "null" ]; then
-    gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/$pr_number/comments/$existing" -F body=@"$full" > /dev/null
+    gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -F body=@"$full" > /dev/null
   else
     gh api "repos/$GITHUB_REPOSITORY/issues/$pr_number/comments" -F body=@"$full" > /dev/null
   fi
