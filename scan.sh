@@ -19,14 +19,18 @@ build_scanner_list() {
 # $ojo_rc. Anything else is a hard failure the caller should propagate.
 run_ojo() {
   local sub="$1" target="$2" fmt="$3" out="$4"
+  local extra=()
+  if [ "$fmt" = "sarif" ] && [ "${SARIF_OMIT_SUPPRESSED:-false}" = "true" ]; then
+    extra+=(--sarif-omit-suppressed)
+  fi
   ojo_rc=0
   if [ "$sub" = "fs" ]; then
     docker run --rm -v "$PWD:/src" -w /src "$IMAGE_REF" \
-      fs --scanners "$SCANNERS" -f "$fmt" "$target" > "$out" || ojo_rc=$?
+      fs --scanners "$SCANNERS" -f "$fmt" ${extra[@]+"${extra[@]}"} "$target" > "$out" || ojo_rc=$?
   else
     # ojo image pulls the ref itself (registry client, not the local docker
     # daemon), so no volume mount is needed.
-    docker run --rm "$IMAGE_REF" image "$target" -f "$fmt" > "$out" || ojo_rc=$?
+    docker run --rm "$IMAGE_REF" image "$target" -f "$fmt" ${extra[@]+"${extra[@]}"} > "$out" || ojo_rc=$?
   fi
   if [ "$ojo_rc" -ne 0 ] && [ "$ojo_rc" -ne 1 ]; then
     echo "ojo $sub scan failed (exit $ojo_rc)" >&2
