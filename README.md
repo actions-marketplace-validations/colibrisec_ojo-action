@@ -76,6 +76,7 @@ run creates, so a first scan of an old repo doesn't flood the tracker.
 | `path` | `.` | Path to scan, relative to the repo root |
 | `image` | | Container image ref to scan for vulnerable OS packages (`ojo image`); empty skips it |
 | `sarif` | `true` | Upload SARIF to GitHub code scanning (needs `security-events: write`; private repos need GHAS). `false` leaves the JSON report (already generated for the summary/issues) as the only per-scan output. |
+| `sarif-omit-suppressed` | `false` | Leave results suppressed by `.ojoignore` out of the uploaded SARIF (`ojo --sarif-omit-suppressed`). GitHub code scanning ignores SARIF suppressions, so without this they stay open as alerts. Needs an ojo release that has the flag. |
 | `pr-comment` | `true` | Post/update a findings summary comment on the triggering PR (needs `pull-requests: write`) |
 | `create-issues` | `false` | Open an issue per finding (needs `issues: write`); skipped on `pull_request` events, see above |
 | `issue-labels` | | Comma-separated, must already exist in the repo |

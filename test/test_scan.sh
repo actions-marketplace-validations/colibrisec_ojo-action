@@ -79,6 +79,28 @@ check "post_pr_comment has both gh api calls" "2" "$comment_calls"
 literal_calls=$(grep -c -- '-f body=@"\$full"' scan.sh || true)
 check "no -f (raw-field) call left -- @file only expands under -F" "0" "$literal_calls"
 
+# --- run_ojo passes --sarif-omit-suppressed only for SARIF output, and only when asked ---
+docker() { echo "$*"; }
+IMAGE_REF=ojo:test SCANNERS=secret
+
+SARIF_OMIT_SUPPRESSED=false run_ojo fs . sarif "$tmp/run.out"
+check "sarif fs run without the option" "run --rm -v $PWD:/src -w /src ojo:test fs --scanners secret -f sarif ." "$(cat "$tmp/run.out")"
+
+unset SARIF_OMIT_SUPPRESSED
+run_ojo fs . sarif "$tmp/run.out"
+check "sarif fs run with the option unset" "run --rm -v $PWD:/src -w /src ojo:test fs --scanners secret -f sarif ." "$(cat "$tmp/run.out")"
+
+SARIF_OMIT_SUPPRESSED=true run_ojo fs . sarif "$tmp/run.out"
+check "sarif fs run with the option" "run --rm -v $PWD:/src -w /src ojo:test fs --scanners secret -f sarif --sarif-omit-suppressed ." "$(cat "$tmp/run.out")"
+
+SARIF_OMIT_SUPPRESSED=true run_ojo image myrepo/app:1 sarif "$tmp/run.out"
+check "sarif image run with the option" "run --rm ojo:test image myrepo/app:1 -f sarif --sarif-omit-suppressed" "$(cat "$tmp/run.out")"
+
+SARIF_OMIT_SUPPRESSED=true run_ojo fs . json "$tmp/run.out"
+check "json run ignores the option" "run --rm -v $PWD:/src -w /src ojo:test fs --scanners secret -f json ." "$(cat "$tmp/run.out")"
+unset -f docker
+unset SARIF_OMIT_SUPPRESSED
+
 # --- post_pr_comment: update an existing comment via issues/comments/{id}, create otherwise ---
 gh_calls="$tmp/gh_calls"
 gh() {
