@@ -54,6 +54,16 @@ case "$out" in
   *$'line one\nline two'*) echo "FAIL: embedded newline broke the table row" >&2; fail=1 ;;
 esac
 
+# --- sev_emoji / detail-row ordering ---
+check "sev_emoji CRITICAL" "🔴" "$(sev_emoji CRITICAL)"
+check "sev_emoji unknown severity" "⚪" "$(sev_emoji WAT)"
+contains "severity table row is colored" "🔴 CRITICAL | 1" "$out"
+# CRITICAL secret row must sort before the HIGH CVE row in the detail table.
+case "$out" in
+  *"aws-key"*"CVE-1"*) ;;
+  *) echo "FAIL: detail rows not sorted by severity (CRITICAL before HIGH)" >&2; fail=1 ;;
+esac
+
 # 60 combined findings should truncate the detail table at 50 rows
 jq -n '{target:".", findings:[range(0;30) as $i | {Package:{Name:"pkg\($i)",Version:"1.0"},
     Vulns:[{ID:"CVE-\($i)",Summary:"v",Severity:"HIGH",FixedVersion:"1.1",URL:"u"}]}],
@@ -62,6 +72,58 @@ jq -n '{target:".", findings:[range(0;30) as $i | {Package:{Name:"pkg\($i)",Vers
 check "jq_count big report" "60" "$(jq_count "$tmp/big.json")"
 write_summary "$tmp/big-summary.md" "$tmp/big.json"
 contains "big summary notes truncation" "10 more" "$(cat "$tmp/big-summary.md")"
+
+# --- post_pr_comment must use -F (file-reading), not -f (literal string) ---
+comment_calls=$(grep -c 'gh api.*body=@"\$full"' scan.sh)
+check "post_pr_comment has both gh api calls" "2" "$comment_calls"
+literal_calls=$(grep -c -- '-f body=@"\$full"' scan.sh || true)
+check "no -f (raw-field) call left -- @file only expands under -F" "0" "$literal_calls"
+
+# --- run_ojo passes --sarif-omit-suppressed only for SARIF output, and only when asked ---
+docker() { echo "$*"; }
+IMAGE_REF=ojo:test SCANNERS=secret
+
+SARIF_OMIT_SUPPRESSED=false run_ojo fs . sarif "$tmp/run.out"
+check "sarif fs run without the option" "run --rm -v $PWD:/src -w /src ojo:test fs --scanners secret -f sarif ." "$(cat "$tmp/run.out")"
+
+unset SARIF_OMIT_SUPPRESSED
+run_ojo fs . sarif "$tmp/run.out"
+check "sarif fs run with the option unset" "run --rm -v $PWD:/src -w /src ojo:test fs --scanners secret -f sarif ." "$(cat "$tmp/run.out")"
+
+SARIF_OMIT_SUPPRESSED=true run_ojo fs . sarif "$tmp/run.out"
+check "sarif fs run with the option" "run --rm -v $PWD:/src -w /src ojo:test fs --scanners secret -f sarif --sarif-omit-suppressed ." "$(cat "$tmp/run.out")"
+
+SARIF_OMIT_SUPPRESSED=true run_ojo image myrepo/app:1 sarif "$tmp/run.out"
+check "sarif image run with the option" "run --rm ojo:test image myrepo/app:1 -f sarif --sarif-omit-suppressed" "$(cat "$tmp/run.out")"
+
+SARIF_OMIT_SUPPRESSED=true run_ojo fs . json "$tmp/run.out"
+check "json run ignores the option" "run --rm -v $PWD:/src -w /src ojo:test fs --scanners secret -f json ." "$(cat "$tmp/run.out")"
+unset -f docker
+unset SARIF_OMIT_SUPPRESSED
+
+# --- post_pr_comment: update an existing comment via issues/comments/{id}, create otherwise ---
+gh_calls="$tmp/gh_calls"
+gh() {
+  echo "$*" >> "$gh_calls"
+  case "$*" in
+    "api repos/o/r/issues/7/comments --paginate"*) echo "${EXISTING_COMMENT:-}" ;;
+  esac
+}
+echo '{"pull_request":{"number":7}}' > "$tmp/event.json"
+echo body > "$tmp/body.md"
+export GITHUB_EVENT_NAME=pull_request GITHUB_EVENT_PATH="$tmp/event.json" GITHUB_REPOSITORY=o/r MARKER=m
+
+: > "$gh_calls"
+EXISTING_COMMENT=123 post_pr_comment "$tmp/body.md"
+contains "existing comment is updated through the issue-comment endpoint" "api -X PATCH repos/o/r/issues/comments/123 " "$(cat "$gh_calls")"
+
+: > "$gh_calls"
+EXISTING_COMMENT= post_pr_comment "$tmp/body.md"
+contains "no existing comment: a new one is created on the PR" "api repos/o/r/issues/7/comments -F body=@" "$(cat "$gh_calls")"
+case "$(cat "$gh_calls")" in
+  *PATCH*) echo "FAIL: no existing comment: must not PATCH" >&2; fail=1 ;;
+esac
+unset -f gh
 
 # create_issues_from's tsv extraction must line up with its own `read` order
 line=$(jq -r '.findings[]? | .Package as $p | .Vulns[]? | [.ID, $p.Name, $p.Version, .FixedVersion, .Severity, .Summary, .URL] | @tsv' "$tmp/small.json")

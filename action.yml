@@ -38,6 +38,9 @@ inputs:
   sarif:
     description: 'Upload results as SARIF to GitHub code scanning. Requires security-events: write and (for private repos) GitHub Advanced Security.'
     default: 'true'
+  sarif-omit-suppressed:
+    description: 'Leave results suppressed by .ojoignore out of the uploaded SARIF (ojo --sarif-omit-suppressed). GitHub code scanning ignores SARIF suppressions, so without this they stay open as alerts. Needs an ojo version that supports the flag.'
+    default: 'false'
   pr-comment:
     description: 'On pull_request/pull_request_target events, post (and keep updated) a summary comment on the PR. Requires pull-requests: write.'
     default: 'true'
@@ -79,6 +82,7 @@ runs:
         SCAN_PATH: ${{ inputs.path }}
         IMAGE: ${{ inputs.image }}
         SARIF: ${{ inputs.sarif }}
+        SARIF_OMIT_SUPPRESSED: ${{ inputs.sarif-omit-suppressed }}
         PR_COMMENT: ${{ inputs.pr-comment }}
         CREATE_ISSUES: ${{ inputs.create-issues }}
         ISSUE_LABELS: ${{ inputs.issue-labels }}
